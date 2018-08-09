@@ -9,17 +9,11 @@ provider:
   memorySize: 128 # Overwrite the default memory size. Default is 1024
 
 functions:
-  hello:
-    handler: bin/hello
+  send-mail:
+    handler: bin/send-mail
     events:
       - http:
-          path: hello
-          method: get
-  world:
-    handler: bin/world
-    events:
-      - http:
-          path: world
+          path: send-mail
           method: get
 
 package:

@@ -1,6 +1,6 @@
 build:
 	dep ensure -v
-	env GOOS=linux go build -ldflags="-s -w" -o bin/get-due-clients-send-pymt-req get-due-clients-send-pymt-req/main.go
+	env GOOS=linux go build -ldflags="-s -w" -o bin/send-mail send-mail/main.go
 
 .PHONY: clean
 clean:
