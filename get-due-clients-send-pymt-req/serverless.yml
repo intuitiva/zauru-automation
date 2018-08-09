@@ -1,0 +1,29 @@
+service: get-due-clients-send-pymnt-req
+
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: go1.x
+  timeout: 30 # optional, in seconds, default is 6
+  memorySize: 128 # Overwrite the default memory size. Default is 1024
+
+functions:
+  hello:
+    handler: bin/hello
+    events:
+      - http:
+          path: hello
+          method: get
+  world:
+    handler: bin/world
+    events:
+      - http:
+          path: world
+          method: get
+
+package:
+ exclude:
+   - ./**
+ include:
+   - ./bin/**

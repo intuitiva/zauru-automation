@@ -1,0 +1,7 @@
+{
+  "name": "get-due-clients-send-pymt-req",
+  "version": "0.0.1",
+  "description": "GET clients with overdue payments and send them an email thru SQS as a reminder",
+  "author": "Luis Sarti <sartip@zauru.com>",
+  "license": "MIT"
+}
