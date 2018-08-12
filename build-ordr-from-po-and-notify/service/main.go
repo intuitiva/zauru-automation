@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"fmt"
     "github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -222,7 +223,7 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 
 	// URL to our queue
 	// TODO replace by lambda environment variable
-	qURL := "https://sqs.us-west-2.amazonaws.com/804987147542/automation_mailer"
+	qURL := os.Getenv("URL_QUEUE_AUTOMATOR_MAILER")
 	
 	// Building html body
 	body_html := fmt.Sprintf(`	
@@ -259,7 +260,6 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	// Sending SQS message
 	result, err := svc.SendMessage(&sqs.SendMessageInput{
         DelaySeconds: aws.Int64(10),
-        MessageAttributes: map[string]*sqs.MessageAttributeValue{},
         MessageBody: aws.String(message_body),
         QueueUrl:    &qURL,
     })
