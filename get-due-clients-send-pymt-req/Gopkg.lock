@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:29401894b0873ce84bca18ddb3d614300851999478cc2ce4de6fe473db4842b6"
+  digest = "1:c64cf9c8010d23098d475f6434bdeb8f96dedeadf886a74e5dd3255b486d26a4"
   name = "github.com/aws/aws-lambda-go"
   packages = [
     "events",
@@ -11,8 +11,60 @@
     "lambdacontext",
   ]
   pruneopts = ""
-  revision = "4d30d0ff60440c2d0480a15747c96ee71c3c53d4"
-  version = "v1.2.0"
+  revision = "e630af386f8aad6ec9fc899b951cf62d37cfe56f"
+  version = "v1.4.0"
+
+[[projects]]
+  digest = "1:6ed9b65072800edb703ad2239dbe9cb45929e379b4cc0e202d4f5c8fdb4dec8b"
+  name = "github.com/aws/aws-sdk-go"
+  packages = [
+    "aws",
+    "aws/awserr",
+    "aws/awsutil",
+    "aws/client",
+    "aws/client/metadata",
+    "aws/corehandlers",
+    "aws/credentials",
+    "aws/credentials/ec2rolecreds",
+    "aws/credentials/endpointcreds",
+    "aws/credentials/stscreds",
+    "aws/csm",
+    "aws/defaults",
+    "aws/ec2metadata",
+    "aws/endpoints",
+    "aws/request",
+    "aws/session",
+    "aws/signer/v4",
+    "internal/sdkio",
+    "internal/sdkrand",
+    "internal/sdkuri",
+    "internal/shareddefaults",
+    "private/protocol",
+    "private/protocol/query",
+    "private/protocol/query/queryutil",
+    "private/protocol/rest",
+    "private/protocol/xml/xmlutil",
+    "service/sqs",
+    "service/sts",
+  ]
+  pruneopts = ""
+  revision = "254f2f37e83d1b3585237fe166aacd14c1783e0b"
+  version = "v1.15.10"
+
+[[projects]]
+  digest = "1:858b7fe7b0f4bc7ef9953926828f2816ea52d01a88d72d1c45bc8c108f23c356"
+  name = "github.com/go-ini/ini"
+  packages = ["."]
+  pruneopts = ""
+  revision = "358ee7663966325963d4e8b2e1fbd570c5195153"
+  version = "v1.38.1"
+
+[[projects]]
+  digest = "1:6f49eae0c1e5dab1dafafee34b207aeb7a42303105960944828c2079b92fc88e"
+  name = "github.com/jmespath/go-jmespath"
+  packages = ["."]
+  pruneopts = ""
+  revision = "0b12d6b5"
 
 [solve-meta]
   analyzer-name = "dep"
@@ -20,6 +72,9 @@
   input-imports = [
     "github.com/aws/aws-lambda-go/events",
     "github.com/aws/aws-lambda-go/lambda",
+    "github.com/aws/aws-sdk-go/aws",
+    "github.com/aws/aws-sdk-go/aws/session",
+    "github.com/aws/aws-sdk-go/service/sqs",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

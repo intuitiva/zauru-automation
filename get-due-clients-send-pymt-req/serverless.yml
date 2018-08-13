@@ -5,19 +5,27 @@ frameworkVersion: ">=1.28.0 <2.0.0"
 provider:
   name: aws
   runtime: go1.x
+  stage: prod
   timeout: 30 # optional, in seconds, default is 6
   memorySize: 128 # Overwrite the default memory size. Default is 1024
-
-functions:
-  send-mail:
-    handler: bin/send-mail
-    events:
-      - http:
-          path: send-mail
-          method: get
+  region: us-west-2
 
 package:
  exclude:
    - ./**
  include:
    - ./bin/**
+
+functions:
+  start:
+    handler: bin/start
+    events:
+      - http:
+          path: start
+          method: get
+  mail:
+    handler: bin/mail
+    events:
+      - sqs:
+          arn: ${env:SQS_ARN}
+          batchSize: 1

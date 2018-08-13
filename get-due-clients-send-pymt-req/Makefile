@@ -1,6 +1,7 @@
 build:
 	dep ensure -v
-	env GOOS=linux go build -ldflags="-s -w" -o bin/send-mail send-mail/main.go
+	env GOOS=linux go build -ldflags="-s -w" -o bin/start start/main.go
+	env GOOS=linux go build -ldflags="-s -w" -o bin/mail mail/main.go
 
 .PHONY: clean
 clean:
