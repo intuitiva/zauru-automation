@@ -16,3 +16,5 @@ Gets the params via HTTP GET to schedule the necesary GETs to send to Zauru
 
 Gets the list of URLs to call from SQS (filled up by the other function `start`).
 
+### Notices
+ 1 install dot_env node module to enable the env variables to be pushed to lambda with the serverless framework

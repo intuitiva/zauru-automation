@@ -1,4 +1,6 @@
 service: get-due-clients-send-pymnt-req
+plugins:
+  - serverless-dotenv-plugin
 
 frameworkVersion: ">=1.28.0 <2.0.0"
 
@@ -6,7 +8,6 @@ provider:
   name: aws
   runtime: go1.x
   stage: prod
-  timeout: 30 # optional, in seconds, default is 6
   memorySize: 128 # Overwrite the default memory size. Default is 1024
   region: us-west-2
 
@@ -19,12 +20,18 @@ package:
 functions:
   start:
     handler: bin/start
+    description: GET webhook to schedule more GET urls thru MAIL function
+    timeout: 30 # optional, in seconds, default is 6
+    environment:
+      URL_QUEUE_AUTOMATION_GET_DUE_CLIENTS_SEND_PYMENT_REQ: ${env:SQS_URL}
     events:
       - http:
-          path: start
+          path: zauru/get-due-clients-send-payment-request
           method: get
   mail:
     handler: bin/mail
+    description: SQS triggered function that makes URLs GET calls of the list of URLs in the queue
+    timeout: 300 # optional, in seconds, default is 6
     events:
       - sqs:
           arn: ${env:SQS_ARN}
