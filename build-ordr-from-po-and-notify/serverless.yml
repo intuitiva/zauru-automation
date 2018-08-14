@@ -1,17 +1,13 @@
-# Welcome to Serverless!
-#
 # This file is the main config file for your service.
 # It's very minimal at this point and uses default values.
-# You can always add more config options for more control.
-# We've included some commented out config examples here.
-# Just uncomment any of them to get that config option.
 #
 # For full config options, check the docs:
 #    docs.serverless.com
-#
-# Happy Coding!
 
 service: build-ordr-from-po-and-notify
+
+plugins:
+  - serverless-dotenv-plugin
 
 frameworkVersion: ">=1.28.0 <2.0.0"
 
@@ -30,7 +26,10 @@ package:
 functions:
   service:
     handler: bin/service
+    description: POST webhook to build sale order from purchase order and notify via email
+    environment:
+      URL_QUEUE_AUTOMATOR_MAILER: ${env:SQS_URL}
     events:
       - http:
-          path: service
+          path: zauru/build-order-from-purchase-order-and-notify
           method: post

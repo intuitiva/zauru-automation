@@ -238,7 +238,6 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
 
 	// URL to our queue
-	// TODO replace by lambda environment variable
 	qURL := os.Getenv("URL_QUEUE_AUTOMATOR_MAILER")
 	
 	// Building html body
@@ -253,7 +252,7 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 					<table class='tg'>
 						%s
 					</table>
-					<p>Ir a la orden de venta <a href='https://zauru.herokuapp.com/sales/orders/%.f'></a> <p>`,
+					<p>Ir a la <a href='https://zauru.herokuapp.com/sales/orders/%.f'>orden de venta</a> <p>`,
 					row_table,
 					sale_order["id"].(float64),
 				)
@@ -278,13 +277,16 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
         DelaySeconds: aws.Int64(10),
         MessageBody: aws.String(message_body),
         QueueUrl:    &qURL,
-    })
+	})
+	
 
     if err != nil {
         return events.APIGatewayProxyResponse{Body: errors.New("507", "Internal Error", err.Error()).Error(), StatusCode: 500}, nil
-    }
+	}
 	
-	return events.APIGatewayProxyResponse{Body: *result.MessageId, StatusCode: 200}, nil
+	log.Print(fmt.Sprintf(`{"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
+	
+	return events.APIGatewayProxyResponse{Body: `{"code":"200","message":"successfully processed."}`, StatusCode: 201}, nil
 }
 
 func main() {
