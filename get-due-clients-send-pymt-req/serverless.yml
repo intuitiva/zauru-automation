@@ -10,6 +10,12 @@ provider:
   stage: prod
   memorySize: 128 # Overwrite the default memory size. Default is 1024
   region: us-west-2
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "sqs:SendMessage"
+        - "sqs:GetQueueUrl"
+      Resource: ${env:SQS_ARN}
 
 package:
  exclude:
