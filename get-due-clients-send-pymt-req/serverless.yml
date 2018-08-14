@@ -26,7 +26,7 @@ functions:
       URL_QUEUE_AUTOMATION_GET_DUE_CLIENTS_SEND_PYMENT_REQ: ${env:SQS_URL}
     events:
       - http:
-          path: start
+          path: zauru/get-due-clients-send-payment-request
           method: get
   mail:
     handler: bin/mail
