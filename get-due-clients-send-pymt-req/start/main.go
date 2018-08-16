@@ -119,7 +119,7 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				// sending batches of 20 URLS
 				counter := 0
 				for _, c := range clients {
-					if c.Seller != excludeExclusiveSeller || c.Cat != excludeCat {
+					if c.Seller != excludeExclusiveSeller && c.Cat != excludeCat {
 
 						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json?r_url=sales/reports/client_pending_payments&r_params[client]=" + strconv.FormatInt(c.Id, 10) + "&p_id=" + strconv.FormatInt(c.Id, 10) + "&r_name=ClientPendingPayments"
 						//log.Printf(u)
