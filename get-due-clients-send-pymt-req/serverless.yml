@@ -38,6 +38,7 @@ functions:
     handler: bin/mail
     description: SQS triggered function that makes URLs GET calls of the list of URLs in the queue
     timeout: 300 # optional, in seconds, default is 6
+    reservedConcurrency: 1
     events:
       - sqs:
           arn: ${env:SQS_ARN}

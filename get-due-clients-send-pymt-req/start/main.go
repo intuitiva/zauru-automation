@@ -104,63 +104,81 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				var clients []Client
 				json.Unmarshal(body, &clients)
 
-				// Define a new object that will be pushed to SQS
-				var listOfUrls ListOfUrls
-
-				listOfUrls.Method = "GET"
-				listOfUrls.ZauruUserEmail = zauruUserEmail
-				listOfUrls.ZauruUserToken = zauruUserToken
-				listOfUrls.Message = "Hola"
+				// Define a new slice of objects that will be pushed to SQS
+				// initialize first element of slice
+				var listOfUrls = []ListOfUrls{
+					ListOfUrls{
+						Method:         "GET",
+						ZauruUserEmail: zauruUserEmail,
+						ZauruUserToken: zauruUserToken,
+						Message:        "Hola",
+					},
+				}
 
 				// traveling thru all clients to GET the URLs for each one (implementing conditions with IF)
+				// sending batches of 20 URLS
+				counter := 0
 				for _, c := range clients {
 					if c.Seller != excludeExclusiveSeller || c.Cat != excludeCat {
 
 						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json?r_url=sales/reports/client_pending_payments&r_params[client]=" + strconv.FormatInt(c.Id, 10) + "&p_id=" + strconv.FormatInt(c.Id, 10) + "&r_name=ClientPendingPayments"
-						log.Printf(u)
-
-						listOfUrls.Urls = append(listOfUrls.Urls, u)
+						//log.Printf(u)
+						index := (counter / 20) // starting from 0
+						// grow listOfUrls slice
+						if index >= len(listOfUrls) {
+							listOfUrls = append(listOfUrls, ListOfUrls{Method: "GET", ZauruUserEmail: zauruUserEmail, ZauruUserToken: zauruUserToken, Message: "Hola"})
+						}
+						listOfUrls[index].Urls = append(listOfUrls[index].Urls, u)
+						counter++
 					}
 				}
 
-				listOfUrlsJson, err := json.Marshal(listOfUrls)
-				if err != nil {
-					log.Printf(err.Error())
-					return Response{StatusCode: 404}, err
+				if len(listOfUrls) <= 0 {
+					log.Printf("No body or weird body was responded from the clients_request")
+					return Response{StatusCode: 500}, errors.New("No body or weird body was responded from the clients_request")
 				} else {
+
 					// Configuring SQS
 					// Initialize a session that the SDK will use to load credentials from the shared credentials file, ~/.aws/credentials.
 					svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
 
 					// URL to our queue
-					// TODO replace by lambda environment variable
 					qURL := os.Getenv("URL_QUEUE_AUTOMATION_GET_DUE_CLIENTS_SEND_PYMENT_REQ")
 
-					// Sending SQS message
-					result, err := svc.SendMessage(&sqs.SendMessageInput{
-						DelaySeconds: aws.Int64(10),
-						MessageBody:  aws.String(string(listOfUrlsJson)),
-						QueueUrl:     &qURL,
-					})
-
-					if err != nil {
-						return Response{StatusCode: 404}, err
-					} else {
-						log.Printf(*result.MessageId)
-						resultado := "Se enviaran " + strconv.Itoa(len(listOfUrls.Urls)) + " correos!!!"
-						log.Printf(resultado)
-
-						resp := Response{
-							StatusCode:      200,
-							IsBase64Encoded: false,
-							Body:            resultado,
-							Headers: map[string]string{
-								"Content-Type": "application/json",
-							},
+					// Sending SQS messages with the body as the ListOfUrl in JSON format
+					for _, lou := range listOfUrls {
+						jsn, errJson := json.Marshal(lou)
+						if errJson != nil {
+							log.Printf(errJson.Error())
+							return Response{StatusCode: 500}, errJson
+						} else {
+							result, errSQSSend := svc.SendMessage(&sqs.SendMessageInput{
+								DelaySeconds: aws.Int64(10),
+								MessageBody:  aws.String(string(jsn)),
+								QueueUrl:     &qURL,
+							})
+							if errSQSSend != nil {
+								log.Printf(errSQSSend.Error())
+								return Response{StatusCode: 500}, errSQSSend
+							} else {
+								log.Printf(*result.MessageId)
+							}
 						}
-
-						return resp, nil
 					}
+
+					resultado := "Se enviaran " + strconv.Itoa(len(listOfUrls)) + " paquetes de requests con un total de " + strconv.Itoa(counter) + " requests !!!"
+					log.Printf(resultado)
+
+					resp := Response{
+						StatusCode:      200,
+						IsBase64Encoded: false,
+						Body:            resultado,
+						Headers: map[string]string{
+							"Content-Type": "application/json",
+						},
+					}
+
+					return resp, nil
 				}
 			}
 		}
