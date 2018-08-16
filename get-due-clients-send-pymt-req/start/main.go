@@ -8,6 +8,7 @@ import (
 	"net/http"      // GET POST
 	"os"            // getting env variables
 	"strconv"       // for string convertions
+	"strings"       // simple functions to manipulate UTF-8 encoded strings
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -27,8 +28,8 @@ type Response events.APIGatewayProxyResponse
 type Client struct {
 	Id     int64  `json:"id"`
 	Info   string `json:"info"`
-	Cat    int    `json:"cat"`
-	Seller int    `json:"default_seller"`
+	Cat    string `json:"cat"`
+	Seller string `json:"default_seller"`
 	Due    string `json:"due"`
 }
 
@@ -38,6 +39,16 @@ type ListOfUrls struct {
 	ZauruUserToken string   `json:"zauru_user_token"`
 	Message        string   `json:"message"`
 	Urls           []string `json:"urls"`
+}
+
+func intNotInSlice(i int, list []int) bool {
+	for _, v := range list {
+		// short circuit evaluation
+		if v == i {
+			return false
+		}
+	}
+	return true
 }
 
 // Handler is our lambda handler invoked by the `lambda.Start` function call
@@ -54,8 +65,8 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 
 	zauruUserEmail := ""
 	zauruUserToken := ""
-	excludeExclusiveSeller := -1
-	excludeCat := -1
+	var excludeExclusiveSeller = []int{}
+	var excludeCat = []int{}
 	// cycle thru params (for Zauru credentials, exclude exclusive seller, exclude payee_category)
 	for k, v := range request.QueryStringParameters {
 		if k == "ZauruUserEmail" {
@@ -65,10 +76,26 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 			zauruUserToken = v
 		}
 		if k == "ExcludeExclusiveSeller" {
-			excludeExclusiveSeller, _ = strconv.Atoi(v)
+			temp := strings.Split(v, "-")
+			for _, i := range temp {
+				j, err := strconv.Atoi(i)
+				if err != nil {
+					log.Printf(err.Error())
+				} else {
+					excludeExclusiveSeller = append(excludeExclusiveSeller, j)
+				}
+			}
 		}
 		if k == "ExcludeCat" {
-			excludeCat, _ = strconv.Atoi(v)
+			temp := strings.Split(v, "-")
+			for _, i := range temp {
+				j, err := strconv.Atoi(i)
+				if err != nil {
+					log.Printf(err.Error())
+				} else {
+					excludeCat = append(excludeCat, j)
+				}
+			}
 		}
 		log.Printf("GET param %s => %s\n", k, v)
 	}
@@ -122,7 +149,10 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 					////
 					// CONDITIONS
 					////
-					if c.Seller != excludeExclusiveSeller && c.Cat != excludeCat {
+					seller, _ := strconv.Atoi(c.Seller)
+					cat, _ := strconv.Atoi(c.Cat)
+					log.Printf("%s not in %v && %s not in %v", c.Seller, excludeExclusiveSeller, c.Cat, excludeCat)
+					if intNotInSlice(seller, excludeExclusiveSeller) && intNotInSlice(cat, excludeCat) {
 
 						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json?r_url=sales/reports/client_pending_payments&r_params[client]=" + strconv.FormatInt(c.Id, 10) + "&p_id=" + strconv.FormatInt(c.Id, 10) + "&r_name=ClientPendingPayments"
 						//log.Printf(u)
