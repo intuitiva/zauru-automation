@@ -54,8 +54,8 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 
 	zauruUserEmail := ""
 	zauruUserToken := ""
-	excludeExclusiveSeller := 0
-	excludeCat := 0
+	excludeExclusiveSeller := -1
+	excludeCat := -1
 	// cycle thru params (for Zauru credentials, exclude exclusive seller, exclude payee_category)
 	for k, v := range request.QueryStringParameters {
 		if k == "ZauruUserEmail" {
@@ -119,6 +119,9 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				// sending batches of 20 URLS
 				counter := 0
 				for _, c := range clients {
+					////
+					// CONDITIONS
+					////
 					if c.Seller != excludeExclusiveSeller && c.Cat != excludeCat {
 
 						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json?r_url=sales/reports/client_pending_payments&r_params[client]=" + strconv.FormatInt(c.Id, 10) + "&p_id=" + strconv.FormatInt(c.Id, 10) + "&r_name=ClientPendingPayments"
@@ -139,7 +142,7 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				} else {
 
 					// Configuring SQS
-					// Initialize a session that the SDK will use to load credentials from the shared credentials file, ~/.aws/credentials.
+					// Initialize a session that the SDK will use
 					svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
 
 					// URL to our queue
