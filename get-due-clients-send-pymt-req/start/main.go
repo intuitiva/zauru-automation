@@ -186,6 +186,7 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 						}
 						jsonParams, _ := json.Marshal(prms)
 						log.Printf(u)
+						log.Printf(string(jsonParams))
 						index := (counter / 20) // starting from 0
 						// grow listOfUrls slice
 						if index >= len(listOfUrls) {
