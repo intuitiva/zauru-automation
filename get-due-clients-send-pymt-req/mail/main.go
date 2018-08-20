@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"bytes"         // functions for the manipulation of byte slices
 	"encoding/json" // marshal and unmarshal JSON
 	"io/ioutil"     // Package ioutil implements some I/O utility functions (the response.Body is an io.ReadCloser...)
 	"log"           // printf
@@ -13,13 +13,13 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// Clients definition hashes inside an array [{id: client_id, cat: client_category_id, seller: seller_id}, {...}]
+// list of urls + POST params, some stuff will repeat (user_email, user_token, method) in all requests
 type ListOfUrls struct {
 	Method         string   `json:"method"`
 	ZauruUserEmail string   `json:"zauru_user_email"`
 	ZauruUserToken string   `json:"zauru_user_token"`
-	Message        string   `json:"message"`
 	Urls           []string `json:"urls"`
+	Body           []string `json:"body"` // this will contain the JSON with email subject, body, report params, etc.
 }
 
 // Handler is our lambda handler invoked by the `lambda.Start` function call
@@ -41,14 +41,14 @@ func Handler(sqsEvent events.SQSEvent) (string, error) {
 	} else {
 
 		// traveling thru all clients to GET the URLs for each one (implementing conditions with IF)
-		for _, c := range listOfUrls.Urls {
-			httpClient2 := &http.Client{}
+		for i, c := range listOfUrls.Urls {
+			httpClient := &http.Client{}
 			// Execute the HTTP get
-			reportRequest, _ := http.NewRequest(listOfUrls.Method, c, nil)
+			reportRequest, _ := http.NewRequest(listOfUrls.Method, c, bytes.NewBufferString(listOfUrls.Body[i]))
 			reportRequest.Header.Add("Content-Type", "application/json")
 			reportRequest.Header.Add("X-User-Email", zauruUserEmail)
 			reportRequest.Header.Add("X-User-Token", zauruUserToken)
-			reportResponse, reportErr := httpClient2.Do(reportRequest)
+			reportResponse, reportErr := httpClient.Do(reportRequest)
 			if reportErr != nil {
 				log.Printf(reportErr.Error() + " " + c)
 				//return reportErr.Error() + " " + c, reportErr
@@ -73,18 +73,6 @@ func Handler(sqsEvent events.SQSEvent) (string, error) {
 
 	return "Hoy si terminamos", nil
 }
-
-//func DoHTTPPost(url string, param map[string]string, ch chan<- HTTPResponse) {
-//	jsonValue, _ := json.Marshal(param)
-//	httpClient2 := &http.Client{}
-//	reportRequest, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonValue))
-//	reportRequest.Header.Add("Content-Type", "application/json")
-//	reportRequest.Header.Add("X-User-Email", zauruUserEmail)
-//	reportRequest.Header.Add("X-User-Token", zauruUserToken)
-//	reportResponse, _ := httpClient2.Do(reportRequest) // avoid catching errors
-//	reportBody, _ := ioutil.ReadAll(reportResponse.Body)
-//	ch <- HTTPResponse{reportResponse.Status, reportBody}
-//}
 
 func main() {
 	lambda.Start(Handler)

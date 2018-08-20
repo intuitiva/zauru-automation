@@ -33,12 +33,26 @@ type Client struct {
 	Due    string `json:"due"`
 }
 
+// list of urls + POST params, some stuff will repeat (user_email, user_token, method) in all requests
 type ListOfUrls struct {
 	Method         string   `json:"method"`
 	ZauruUserEmail string   `json:"zauru_user_email"`
 	ZauruUserToken string   `json:"zauru_user_token"`
-	Message        string   `json:"message"`
 	Urls           []string `json:"urls"`
+	Body           []string `json:"body"` // this will contain the JSON with email subject, body, report params, etc.
+}
+
+// JSON for the POST params to send
+type Rparams struct {
+	Client string `json:"client"`
+}
+
+type Params struct {
+	Pid     string  `json:"p_id"`
+	Rbody   string  `json:"r_body"`
+	Rname   string  `json:"r_name"`
+	Rurl    string  `json:"r_url"`
+	Rparams Rparams `json:"r_params"`
 }
 
 func intNotInSlice(i int, list []int) bool {
@@ -65,6 +79,8 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 
 	zauruUserEmail := ""
 	zauruUserToken := ""
+	emailSubject := ""
+	emailBody := ""
 	var excludeExclusiveSeller = []int{}
 	var excludeCat = []int{}
 	// cycle thru params (for Zauru credentials, exclude exclusive seller, exclude payee_category)
@@ -96,6 +112,12 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 					excludeCat = append(excludeCat, j)
 				}
 			}
+		}
+		if k == "EmailSubject" {
+			emailSubject = v
+		}
+		if k == "EmailBody" {
+			emailBody = v
 		}
 		log.Printf("GET param %s => %s\n", k, v)
 	}
@@ -135,10 +157,9 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				// initialize first element of slice
 				var listOfUrls = []ListOfUrls{
 					ListOfUrls{
-						Method:         "GET",
+						Method:         "POST",
 						ZauruUserEmail: zauruUserEmail,
 						ZauruUserToken: zauruUserToken,
-						Message:        "Hola",
 					},
 				}
 
@@ -151,17 +172,31 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 					////
 					seller, _ := strconv.Atoi(c.Seller)
 					cat, _ := strconv.Atoi(c.Cat)
-					log.Printf("%s not in %v && %s not in %v", c.Seller, excludeExclusiveSeller, c.Cat, excludeCat)
 					if intNotInSlice(seller, excludeExclusiveSeller) && intNotInSlice(cat, excludeCat) {
 
-						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json?r_url=sales/reports/client_pending_payments&r_params[client]=" + strconv.FormatInt(c.Id, 10) + "&p_id=" + strconv.FormatInt(c.Id, 10) + "&r_name=ClientPendingPayments"
-						//log.Printf(u)
+						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json"
+						prms := Params{
+							Pid:   strconv.FormatInt(c.Id, 10),
+							Rname: emailSubject,
+							Rbody: emailBody,
+							Rurl:  "sales/reports/client_pending_payments",
+							Rparams: Rparams{
+								Client: strconv.FormatInt(c.Id, 10),
+							},
+						}
+						jsonParams, _ := json.Marshal(prms)
+						log.Printf(u)
 						index := (counter / 20) // starting from 0
 						// grow listOfUrls slice
 						if index >= len(listOfUrls) {
-							listOfUrls = append(listOfUrls, ListOfUrls{Method: "GET", ZauruUserEmail: zauruUserEmail, ZauruUserToken: zauruUserToken, Message: "Hola"})
+							listOfUrls = append(listOfUrls, ListOfUrls{
+								Method:         "POST",
+								ZauruUserEmail: zauruUserEmail,
+								ZauruUserToken: zauruUserToken,
+							})
 						}
 						listOfUrls[index].Urls = append(listOfUrls[index].Urls, u)
+						listOfUrls[index].Body = append(listOfUrls[index].Body, string(jsonParams))
 						counter++
 					}
 				}
@@ -217,18 +252,6 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 		}
 	}
 }
-
-//func DoHTTPPost(url string, param map[string]string, ch chan<- HTTPResponse) {
-//	jsonValue, _ := json.Marshal(param)
-//	httpClient2 := &http.Client{}
-//	reportRequest, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonValue))
-//	reportRequest.Header.Add("Content-Type", "application/json")
-//	reportRequest.Header.Add("X-User-Email", zauruUserEmail)
-//	reportRequest.Header.Add("X-User-Token", zauruUserToken)
-//	reportResponse, _ := httpClient2.Do(reportRequest) // avoid catching errors
-//	reportBody, _ := ioutil.ReadAll(reportResponse.Body)
-//	ch <- HTTPResponse{reportResponse.Status, reportBody}
-//}
 
 func main() {
 	lambda.Start(Handler)
