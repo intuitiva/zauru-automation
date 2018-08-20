@@ -174,7 +174,6 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 					////
 					seller, _ := strconv.Atoi(c.Seller)
 					cat, _ := strconv.Atoi(c.Cat)
-					log.Printf(c.Currency)
 					if intNotInSlice(seller, excludeExclusiveSeller) && intNotInSlice(cat, excludeCat) && c.Currency == "GTQ" {
 
 						prms := Params{
