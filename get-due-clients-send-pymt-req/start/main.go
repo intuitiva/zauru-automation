@@ -26,11 +26,12 @@ type Response events.APIGatewayProxyResponse
 
 // Clients definition hashes inside an array [{id: client_id, cat: client_category_id, seller: seller_id}, {...}]
 type Client struct {
-	Id     int64  `json:"id"`
-	Info   string `json:"info"`
-	Cat    string `json:"cat"`
-	Seller string `json:"default_seller"`
-	Due    string `json:"due"`
+	Id       int64  `json:"id"`
+	Info     string `json:"info"`
+	Cat      string `json:"cat"`
+	Seller   string `json:"default_seller"`
+	Due      string `json:"due"`
+	Currency string `json:"currency"`
 }
 
 // list of urls + POST params, some stuff will repeat (user_email, user_token, method) in all requests
@@ -166,15 +167,16 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				// traveling thru all clients to GET the URLs for each one (implementing conditions with IF)
 				// sending batches of 20 URLS
 				counter := 0
+				u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json"
 				for _, c := range clients {
 					////
 					// CONDITIONS
 					////
 					seller, _ := strconv.Atoi(c.Seller)
 					cat, _ := strconv.Atoi(c.Cat)
-					if intNotInSlice(seller, excludeExclusiveSeller) && intNotInSlice(cat, excludeCat) {
+					log.Printf(c.Currency)
+					if intNotInSlice(seller, excludeExclusiveSeller) && intNotInSlice(cat, excludeCat) && c.Currency == "GTQ" {
 
-						u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json"
 						prms := Params{
 							Pid:   strconv.FormatInt(c.Id, 10),
 							Rname: emailSubject,
@@ -185,7 +187,6 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 							},
 						}
 						jsonParams, _ := json.Marshal(prms)
-						log.Printf(u)
 						log.Printf(string(jsonParams))
 						index := (counter / 20) // starting from 0
 						// grow listOfUrls slice
