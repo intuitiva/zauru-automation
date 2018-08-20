@@ -167,7 +167,7 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 				// traveling thru all clients to GET the URLs for each one (implementing conditions with IF)
 				// sending batches of 20 URLS
 				counter := 0
-				u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_me.json"
+				u := "https://app.zauru.com/settings/deliverable_reports/immediate_delivery_to_payee.json"
 				for _, c := range clients {
 					////
 					// CONDITIONS
