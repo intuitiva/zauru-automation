@@ -27,8 +27,6 @@ functions:
   service:
     handler: bin/service
     description: POST webhook to build sale order from purchase order and notify via email
-    environment:
-      URL_QUEUE_AUTOMATOR_MAILER: ${env:SQS_URL}
     events:
       - http:
           path: zauru/build-order-from-purchase-order-and-notify

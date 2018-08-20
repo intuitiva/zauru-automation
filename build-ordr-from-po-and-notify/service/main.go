@@ -4,7 +4,9 @@ import (
 	"os"
 	"fmt"
 	"log"
+	"time"
 	"strings"
+	"runtime"
     "github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"encoding/json"
@@ -24,14 +26,15 @@ type apiError struct {
 }
 
 func (e *apiError) Error() string {
-	log.Print(fmt.Sprintf(`{"code":"%s","error":"%s"}`, e.code, e.err))
-	return fmt.Sprintf(`{"code":"%s","error":"%s"}`, e.code, e.msg)
+	pc := make([]uintptr, 10)  // at least 1 entry needed
+	runtime.Callers(2, pc)
+	f := runtime.FuncForPC(pc[0])
+	_, line := f.FileLine(pc[0])
+	log.Print(fmt.Sprintf(`{"code":"%s","msg":"%s","error":"%s:%d %s"}`, e.code, e.msg, f.Name(), line, e.err))
+	return fmt.Sprintf(`{"code":"%s","msg":"%s"}`, e.code, e.msg)
 }
 
 func (e *apiError) New(code string, msg string, err string) error {
-	if err == ""{
-		err = msg
-	}
 	return &apiError{code, msg, err}
 }
 
@@ -42,6 +45,7 @@ type RequestParams struct {
 	Payment_term_id int
 	Seller_id int
 	Agency_id int
+	Entity_id int
 	Recipient_email string
 	Sender_email string
 	Email_title string
@@ -52,7 +56,7 @@ type RequestParams struct {
 	Email_extra_bcc string
 }
 
-type poData struct{
+type poData struct {
 	Reference string `json:"reference"`
 	Memo string `json:"memo"`
 	Date string `json:"date"`
@@ -70,28 +74,30 @@ type poStruct struct {
 	Invoice poData `json:"invoice"`
 }
 
+type response events.APIGatewayProxyResponse
+
 // This function make validations and return body params
-func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error){
+func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error) {
 	if request.Headers["X-User-Email-1"] == "" {
-		return nil, errors.New("401", `user email (1) is missing.`, "")
+		return nil, errors.New("405", `user email (1) is missing.`, "")
 	}
 
 	if request.Headers["X-User-Token-1"] == "" {
-		return nil, errors.New("402", `user token (1) is missing.`, "")
+		return nil, errors.New("405", `user token (1) is missing.`, "")
 	}
 
 	if request.Headers["X-User-Email-2"] == "" {
-		return nil, errors.New("403", `user email (2) is missing.`, "")
+		return nil, errors.New("405", `user email (2) is missing.`, "")
 	}
 
 	if request.Headers["X-User-Token-2"] == "" {
-		return nil, errors.New("404", `user token (2) is missing.`, "")
+		return nil, errors.New("405", `user token (2) is missing.`, "")
 	}
 
 	var params RequestParams
 	
 	if err := json.Unmarshal([]byte(request.Body), &params); err != nil {
-		return nil, errors.New("501", "Internal Error", err.Error())
+		return nil, errors.New("406", "parsing params error.", err.Error())
 	}
 	
 	if params.Purchase_order_id == 0{
@@ -99,33 +105,33 @@ func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error){
 	}
 
 	if params.Payment_term_id == 0{
-		return nil, errors.New("406", `payment term id is missing.`, "")
+		return nil, errors.New("405", `payment term id is missing.`, "")
 	}
 
 	if params.Seller_id == 0{
-		return nil, errors.New("407", `seller id is missing.`, "")
+		return nil, errors.New("405", `seller id is missing.`, "")
 	}
 
 	if params.Agency_id == 0{
-		return nil, errors.New("408", `agency id is missing.`, "")
+		return nil, errors.New("405", `agency id is missing.`, "")
 	}
 
 	if params.Recipient_email == ""{
-		return nil, errors.New("409", `recipient email is missing.`, "")
+		return nil, errors.New("405", `recipient email is missing.`, "")
 	}
 
 	if params.Email_title == ""{
-		return nil, errors.New("410", `email title is missing.`, "")
+		return nil, errors.New("405", `email title is missing.`, "")
 	}
 		
 	if params.Email_recipient_name == ""{
-		return nil, errors.New("411", `email recipient name is missing.`, "")
+		return nil, errors.New("405", `email recipient name is missing.`, "")
 	}
 
 	return &params, nil
 }
 
-func httpRequest(url string, method string, params []byte, headers map[string]string) (interface{}, error){
+func httpRequest(url string, method string, params []byte, headers map[string]string) (interface{}, error) {
 	// Configuring http request
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(params))
 	if err != nil {
@@ -140,26 +146,28 @@ func httpRequest(url string, method string, params []byte, headers map[string]st
 	if err != nil {
 		return nil, errors.New("503", "Internal Error", err.Error())
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
 	if err != nil {
 		return nil, errors.New("504", "Internal Error", err.Error())
 	}
 	// Parsing json response to object
 	var data_object interface{}
-	if err := json.Unmarshal(body, &data_object); err != nil{
+	err = json.Unmarshal(body, &data_object);
+	if err != nil {
 		return nil, errors.New("505", "Internal Error", err.Error())
 	}
+	
 	return data_object, nil
 }
 
-func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	// Validate if api key and user email is not empty
 
 	params, err := getParams(&request)
 
 	if err != nil {
-		return events.APIGatewayProxyResponse{Body: err.Error(), StatusCode: 400}, nil
+		return response {Body: err.Error(), StatusCode: 400}, nil
 	}
 
 	// PO request setup
@@ -171,7 +179,7 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	// Send request, getting response object
 	po_object, err := httpRequest(url_po, "GET", []byte(""), headers_po)
 	if(err != nil){
-		return events.APIGatewayProxyResponse{Body: err.Error(), StatusCode: 500}, nil
+		return response {Body: err.Error(), StatusCode: 500}, nil
 	}
 
 	purchase_order := po_object.(map[string] interface{})
@@ -208,8 +216,8 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 							<th class='tg-yw4l'>%s</th>
 							<th class='tg-yw4l'>%s</th>
 						</tr>`,
-						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
 						po.(map[string]interface{})["item"].(map[string]interface{})["name"].(string),
+						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
 						po.(map[string]interface{})["booked_quantity"].(string),
 		)
 	}
@@ -217,8 +225,12 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	// Parsing sale order objecto to json
 	so_json, err := json.Marshal(so_object)
 	if err != nil {
-		return events.APIGatewayProxyResponse{Body: errors.New("506", "Internal Error", err.Error()).Error(), StatusCode: 500}, err
+		return response {Body: errors.New("506", "Internal Error", err.Error()).Error(), StatusCode: 500}, nil
 	}
+
+	var sale_order map[string] interface{}
+	var sale_order_id float64
+	var footer_email string
 
 	// SO request setup
 	headers_so := make(map[string] string)
@@ -228,12 +240,16 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	headers_so["Accept"] = "application/json"
 	headers_so["Content-type"] = "application/json"
 	new_so_object, err := httpRequest(url_so, "POST", so_json, headers_so)
-	if(err != nil){
-		return events.APIGatewayProxyResponse{Body: err.Error(), StatusCode: 500}, err
+	sale_order = new_so_object.(map[string] interface{})
+
+	if err != nil || sale_order["id"] == nil || sale_order["id"] == 0 {
+		sale_order_id = 0
+		footer_email = "<p> Nota: La orden de venta no se generó correctamente, debido a que no hay existencias suficientes para uno o varios de los productos.<p>"
+	} else {
+		sale_order_id = sale_order["id"].(float64)
+		footer_email = fmt.Sprintf(`<p>Ir a la <a href='https://zauru.herokuapp.com/sales/orders/%.f'>orden de venta</a> <p>`, sale_order_id)
 	}
-
-	sale_order := new_so_object.(map[string] interface{})
-
+	
 	// Configuring SQS
 	svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
 
@@ -243,23 +259,27 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	// Building html body
 	body_html := fmt.Sprintf(`	
 					<p>Se ha generado una nueva orden de venta con el siguiente detalle:<p>
-					<style type='text/css'>
-						.tg  {border-collapse:collapse;border-spacing:0;border-color:#aabcfe;margin:0px auto;}
-						.tg td{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:1px;overflow:hidden;word-break:normal;border-color:#aabcfe;color:#669;background-color:#e8edff;}
-						.tg th{font-family:Arial, sans-serif;font-size:14px;font-weight:normal;padding:10px 5px;border-style:solid;border-width:1px;overflow:hidden;word-break:normal;border-color:#aabcfe;color:#039;background-color:#b9c9fe;}
-						.tg .tg-yw4l{vertical-align:top}
-					</style>
 					<table class='tg'>
+					<tr>
+						<th class='tg-us36'>Código</th>
+						<th class='tg-us36'>Nombre</th>
+						<th class='tg-us36'>Cantidad</th>
+					</tr>
 						%s
 					</table>
-					<p>Ir a la <a href='https://zauru.herokuapp.com/sales/orders/%.f'>orden de venta</a> <p>`,
+					<br>
+					<br>
+					%s`,
 					row_table,
-					sale_order["id"].(float64),
+					footer_email,
 				)
 
 	// Building json body
 	message_body := fmt.Sprintf(
-		`{"title":"%s","body":"%s","recipient_email":"%s","entity_logo":"%s","entity_name":"%s","recipient_name":"%s","sender_name":"%s","sender_email":"%s","extra_cc":"%s","extra_bcc":"%s","attached_file_url":"","attachment_name":""}`,
+		`{"id":"NOTIFICATION%.f%d","template_name":"automator","entity_id":%d,"title":"%s","body":"%s","recipient_email":"%s","entity_logo":"%s","entity_name":"%s","recipient_name":"%s","sender_name":"%s","sender_email":"%s","extra_cc":"%s","extra_bcc":"%s"}`,
+		sale_order_id,
+		int32(time.Now().Unix()),
+		params.Entity_id,
 		params.Email_title,
 		strings.Replace(strings.Replace(body_html,"\n", "", -1), "\t", "", -1),
 		params.Recipient_email,
@@ -278,15 +298,14 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
         MessageBody: aws.String(message_body),
         QueueUrl:    &qURL,
 	})
-	
 
     if err != nil {
-        return events.APIGatewayProxyResponse{Body: errors.New("507", "Internal Error", err.Error()).Error(), StatusCode: 500}, nil
+        return response {Body: errors.New("507", "Internal Error", err.Error()).Error(), StatusCode: 500}, nil
 	}
 	
 	log.Print(fmt.Sprintf(`{"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
 	
-	return events.APIGatewayProxyResponse{Body: `{"code":"200","message":"successfully processed."}`, StatusCode: 201}, nil
+	return response {Body: `{"code":"200","message":"successfully processed."}`, StatusCode: 201}, nil
 }
 
 func main() {
