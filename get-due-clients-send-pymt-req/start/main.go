@@ -24,6 +24,11 @@ import (
 // https://serverless.com/framework/docs/providers/aws/events/apigateway/#lambda-proxy-integration
 type Response events.APIGatewayProxyResponse
 
+// structure for the response to return a well formatted JSON (that zapier understands)
+type JsonResponse struct {
+	Response string `json:"response"`
+}
+
 // Clients definition hashes inside an array [{id: client_id, cat: client_category_id, seller: seller_id}, {...}]
 type Client struct {
 	Id       int64  `json:"id"`
@@ -209,7 +214,7 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 
 					// Configuring SQS
 					// Initialize a session that the SDK will use
-					svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
+					sqsSvc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
 
 					// URL to our queue
 					qURL := os.Getenv("URL_QUEUE_AUTOMATION_GET_DUE_CLIENTS_SEND_PYMENT_REQ")
@@ -221,7 +226,7 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 							log.Printf(errJson.Error())
 							return Response{StatusCode: 500}, errJson
 						} else {
-							result, errSQSSend := svc.SendMessage(&sqs.SendMessageInput{
+							result, errSQSSend := sqsSvc.SendMessage(&sqs.SendMessageInput{
 								DelaySeconds: aws.Int64(10),
 								MessageBody:  aws.String(string(jsn)),
 								QueueUrl:     &qURL,
@@ -238,10 +243,11 @@ func Handler(request events.APIGatewayProxyRequest) (Response, error) {
 					resultado := "Se enviaran " + strconv.Itoa(len(listOfUrls)) + " paquetes de requests con un total de " + strconv.Itoa(counter) + " requests !!!"
 					log.Printf(resultado)
 
+					r, _ := json.Marshal(JsonResponse{Response: resultado})
 					resp := Response{
 						StatusCode:      200,
 						IsBase64Encoded: false,
-						Body:            resultado,
+						Body:            string(r),
 						Headers: map[string]string{
 							"Content-Type": "application/json",
 						},
