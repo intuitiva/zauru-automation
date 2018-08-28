@@ -44,6 +44,7 @@ type RequestParams struct {
 	Purchase_order_id int
 	Payment_term_id int
 	Seller_id int
+	Payee_id int
 	Agency_id int
 	Entity_id int
 	Recipient_email string
@@ -62,8 +63,7 @@ type poData struct {
 	Date string `json:"date"`
 	Taxable bool `json:"taxable"`
 	Pos bool `json:"pos"`
-	Payee_id string `json:"payee_id"`
-	Order_number string `json:"order_number"`
+	Payee_id int `json:"payee_id"`
 	Payment_term_id int `json:"payment_term_id"`
 	Seller_id int `json:"seller_id"`
 	Agency_id int `json:"agency_id"`
@@ -110,6 +110,10 @@ func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error) 
 
 	if params.Seller_id == 0{
 		return nil, errors.New("405", `seller id is missing.`, "")
+	}
+
+	if params.Payee_id == 0{
+		return nil, errors.New("405", `payee id is missing.`, "")
 	}
 
 	if params.Agency_id == 0{
@@ -187,13 +191,12 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	// Filling sale order data
 	so_data := &poData{
-		Reference: purchase_order["reference"].(string),
+		Reference: purchase_order["agency"].(map[string] interface{})["name"].(string),
 		Memo: purchase_order["memo"].(string),
 		Date: purchase_order["issue_date"].(string),
 		Taxable: true,
 		Pos: false,
-		Payee_id: purchase_order["agency"].(map[string] interface{})["notes"].(string),
-		Order_number: fmt.Sprintf("%f", purchase_order["zid"].(float64)),
+		Payee_id: params.Payee_id,
 		Payment_term_id: params.Payment_term_id,
 		Seller_id: params.Seller_id,
 		Agency_id: params.Agency_id,
@@ -210,14 +213,21 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)]["quantity"], _ = strconv.ParseFloat(po.(map[string]interface{})["booked_quantity"].(string), 32)
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)]["item_code"] = po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string)
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)]["unit_price"] = 1.00
+		is_odd := ""
+		if i % 2 != 0{
+			is_odd = "odd"
+		}
 		row_table += fmt.Sprintf(
 						`<tr>
-							<th class='tg-yw4l'>%s</th>
-							<th class='tg-yw4l'>%s</th>
-							<th class='tg-yw4l'>%s</th>
+							<td class='tg-yw4l %s'>%s</th>
+							<td class='tg-yw4l %s'>%s</th>
+							<td class='tg-yw4l %s'>%s</th>
 						</tr>`,
+						is_odd,
 						po.(map[string]interface{})["item"].(map[string]interface{})["name"].(string),
+						is_odd,
 						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
+						is_odd,
 						po.(map[string]interface{})["booked_quantity"].(string),
 		)
 	}
@@ -247,7 +257,10 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		footer_email = "<p> Nota: La orden de venta no se generó correctamente, debido a que no hay existencias suficientes para uno o varios de los productos.<p>"
 	} else {
 		sale_order_id = sale_order["id"].(float64)
-		footer_email = fmt.Sprintf(`<p>Ir a la <a href='https://zauru.herokuapp.com/sales/orders/%.f'>orden de venta</a> <p>`, sale_order_id)
+		footer_email = fmt.Sprintf(`
+									<center>
+										<a href='https://zauru.herokuapp.com/sales/orders/%.f' class='button'>Ir a Orden</button>
+									</center>`, sale_order_id)
 	}
 	
 	// Configuring SQS
@@ -257,7 +270,31 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	qURL := os.Getenv("URL_QUEUE_AUTOMATOR_MAILER")
 	
 	// Building html body
-	body_html := fmt.Sprintf(`	
+	body_html := fmt.Sprintf(`
+					<style type='text/css'>
+					.tg  {border-collapse:collapse;border-spacing:0;border-color:#999;margin:0px auto;}
+					.tg td.odd{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#c4d9f3;}
+					.tg td{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#ecf5ff;}
+					.tg th{font-family:Arial, sans-serif;font-size:14px;font-weight:normal;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#fff;background-color:#26ADE4;}
+					.tg .tg-0pky{border-color:inherit;text-align:left;vertical-align:top}
+					.button {
+						border: 1px solid #74a0b9;
+						background: #65a9d7;
+						padding: 10.5px 21px;
+						-webkit-border-radius: 6px;
+						-moz-border-radius: 6px;
+						border-radius: 6px;
+						-webkit-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;
+						-moz-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;
+						box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;
+						text-shadow: #7ea4bd 0 1px 0;
+						color: #ffffff;
+						font-size: 14px;
+						font-family: helvetica, serif;
+						text-decoration: none;
+						vertical-align: middle;
+						}
+					</style>
 					<p>Se ha generado una nueva orden de venta con el siguiente detalle:<p>
 					<table class='tg'>
 					<tr>
@@ -269,6 +306,9 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 					</table>
 					<br>
 					<br>
+					<br>
+					<br>
+					<br>
 					%s`,
 					row_table,
 					footer_email,
@@ -276,17 +316,18 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	// Building json body
 	message_body := fmt.Sprintf(
-		`{"id":"NOTIFICATION%.f%d","template_name":"automator","entity_id":%d,"title":"%s","body":"%s","recipient_email":"%s","entity_logo":"%s","entity_name":"%s","recipient_name":"%s","sender_name":"%s","sender_email":"%s","extra_cc":"%s","extra_bcc":"%s"}`,
+		`{"id":"NOTIFICATION%.f%d","template_name":"automator","entity_id":%d,"title":"%s %s","body":"%s","recipient_email":"%s","entity_logo":"%s","entity_name":"%s","recipient_name":"%s","sender_name":"%s","sender_email":"%s","extra_cc":"%s","extra_bcc":"%s"}`,
 		sale_order_id,
 		int32(time.Now().Unix()),
 		params.Entity_id,
 		params.Email_title,
+		sale_order["order_number"].(string),
 		strings.Replace(strings.Replace(body_html,"\n", "", -1), "\t", "", -1),
 		params.Recipient_email,
 		params.Email_entity_logo,
 		params.Email_entity_name,
 		params.Email_recipient_name,
-		purchase_order["agency"].(map[string] interface{})["notes"].(string),
+		purchase_order["agency"].(map[string] interface{})["name"].(string),
 		params.Sender_email,
 		params.Email_extra_cc,
 		params.Email_extra_bcc,
