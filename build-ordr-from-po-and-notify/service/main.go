@@ -136,6 +136,10 @@ func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error) 
 }
 
 func httpRequest(url string, method string, params []byte, headers map[string]string) (interface{}, error) {
+	log.Print(url)
+	log.Print(method)
+	log.Print(string(params))
+	
 	// Configuring http request
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(params))
 	if err != nil {
@@ -159,6 +163,7 @@ func httpRequest(url string, method string, params []byte, headers map[string]st
 	var data_object interface{}
 	err = json.Unmarshal(body, &data_object);
 	if err != nil {
+		log.Print(string(body))
 		return nil, errors.New("505", "Internal Error", err.Error())
 	}
 	
@@ -176,7 +181,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	// PO request setup
 	headers_po := make(map[string] string)
-	url_po := fmt.Sprintf("https://zauru.herokuapp.com/purchases/purchase_orders/%d.json", params.Purchase_order_id)
+	url_po := fmt.Sprintf("https://app.zauru.com/purchases/purchase_orders/%d.json", params.Purchase_order_id)
 	headers_po["X-User-Email"] = request.Headers["X-User-Email-1"]
 	headers_po["X-User-Token"] = request.Headers["X-User-Token-1"]
 
@@ -217,18 +222,19 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		if i % 2 != 0{
 			is_odd = "odd"
 		}
+		quantity, _ := strconv.ParseFloat(po.(map[string]interface{})["booked_quantity"].(string), 32)
 		row_table += fmt.Sprintf(
 						`<tr>
 							<td class='tg-yw4l %s'>%s</th>
 							<td class='tg-yw4l %s'>%s</th>
-							<td class='tg-yw4l %s'>%s</th>
+							<td class='tg-yw4l %s'>%.f</th>
 						</tr>`,
 						is_odd,
 						po.(map[string]interface{})["item"].(map[string]interface{})["name"].(string),
 						is_odd,
 						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
 						is_odd,
-						po.(map[string]interface{})["booked_quantity"].(string),
+						quantity,
 		)
 	}
 
@@ -240,27 +246,30 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	var sale_order map[string] interface{}
 	var sale_order_id float64
+	var sale_order_number string
 	var footer_email string
 
 	// SO request setup
 	headers_so := make(map[string] string)
-	url_so := "https://zauru.herokuapp.com/sales/orders.json"
+	url_so := "https://app.zauru.com/sales/orders.json"
 	headers_so["X-User-Email"] = request.Headers["X-User-Email-2"]
 	headers_so["X-User-Token"] = request.Headers["X-User-Token-2"]
 	headers_so["Accept"] = "application/json"
 	headers_so["Content-type"] = "application/json"
 	new_so_object, err := httpRequest(url_so, "POST", so_json, headers_so)
-	sale_order = new_so_object.(map[string] interface{})
 
-	if err != nil || sale_order["id"] == nil || sale_order["id"] == 0 {
+	if err != nil {
 		sale_order_id = 0
+		sale_order_number = ""
 		footer_email = "<p> Nota: La orden de venta no se generó correctamente, debido a que no hay existencias suficientes para uno o varios de los productos.<p>"
 	} else {
+		sale_order = new_so_object.(map[string] interface{})
 		sale_order_id = sale_order["id"].(float64)
+		sale_order_number = sale_order["order_number"].(string)
 		footer_email = fmt.Sprintf(`
 									<center>
-										<a href='https://zauru.herokuapp.com/sales/orders/%.f' class='button'>Ir a Orden</button>
-									</center>`, sale_order_id)
+										<a href='https://app.zauru.com/sales/orders/%.f' class='button'>Ir a Orden %s</button>
+									</center>`, sale_order_id, sale_order_number)
 	}
 	
 	// Configuring SQS
@@ -277,23 +286,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 					.tg td{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#ecf5ff;}
 					.tg th{font-family:Arial, sans-serif;font-size:14px;font-weight:normal;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#fff;background-color:#26ADE4;}
 					.tg .tg-0pky{border-color:inherit;text-align:left;vertical-align:top}
-					.button {
-						border: 1px solid #74a0b9;
-						background: #65a9d7;
-						padding: 10.5px 21px;
-						-webkit-border-radius: 6px;
-						-moz-border-radius: 6px;
-						border-radius: 6px;
-						-webkit-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;
-						-moz-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;
-						box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;
-						text-shadow: #7ea4bd 0 1px 0;
-						color: #ffffff;
-						font-size: 14px;
-						font-family: helvetica, serif;
-						text-decoration: none;
-						vertical-align: middle;
-						}
+					.button {border: 1px solid #74a0b9;background: #65a9d7;padding: 10.5px 21px;-webkit-border-radius: 6px;-moz-border-radius: 6px;border-radius: 6px;-webkit-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;-moz-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;text-shadow: #7ea4bd 0 1px 0;color: #ffffff;font-size: 14px;font-family: helvetica, serif;text-decoration: none;vertical-align: middle;}
 					</style>
 					<p>Se ha generado una nueva orden de venta con el siguiente detalle:<p>
 					<table class='tg'>
@@ -321,7 +314,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		int32(time.Now().Unix()),
 		params.Entity_id,
 		params.Email_title,
-		sale_order["order_number"].(string),
+		sale_order_number,
 		strings.Replace(strings.Replace(body_html,"\n", "", -1), "\t", "", -1),
 		params.Recipient_email,
 		params.Email_entity_logo,
