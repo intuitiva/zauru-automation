@@ -40,22 +40,30 @@ func (e *apiError) New(code string, msg string, err string) error {
 
 var errors = &apiError{}
 
+type emailInfo struct {
+	Recipient string
+	Title string
+	Recipient_name string
+	Sender_name string
+	Sender string
+	Extra_cc string
+	Extra_bcc string
+	Entity_name string
+	Entity_id int
+	Entity_logo string
+}
+
 type RequestParams struct {
 	Purchase_order_id int
 	Payment_term_id int
 	Seller_id int
 	Payee_id int
 	Agency_id int
-	Entity_id int
-	Recipient_email string
-	Sender_email string
-	Email_title string
-	Email_entity_logo string
-	Email_entity_name string
-	Email_recipient_name string
-	Email_extra_cc string
-	Email_extra_bcc string
+	Dispatcher emailInfo
+	Applicant emailInfo
 }
+
+
 
 type poData struct {
 	Reference string `json:"reference"`
@@ -120,16 +128,28 @@ func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error) 
 		return nil, errors.New("405", `agency id is missing.`, "")
 	}
 
-	if params.Recipient_email == ""{
-		return nil, errors.New("405", `recipient email is missing.`, "")
+	if params.Dispatcher.Recipient == ""{
+		return nil, errors.New("405", `dispatcher recipient email is missing.`, "")
 	}
 
-	if params.Email_title == ""{
-		return nil, errors.New("405", `email title is missing.`, "")
+	if params.Dispatcher.Title == ""{
+		return nil, errors.New("405", `dispatcher email title is missing.`, "")
 	}
 		
-	if params.Email_recipient_name == ""{
-		return nil, errors.New("405", `email recipient name is missing.`, "")
+	if params.Dispatcher.Recipient_name == ""{
+		return nil, errors.New("405", `dispatcher email recipient name is missing.`, "")
+	}
+	
+	if params.Applicant.Recipient == ""{
+		return nil, errors.New("405", `applicant recipient email is missing.`, "")
+	}
+
+	if params.Applicant.Title == ""{
+		return nil, errors.New("405", `applicant email title is missing.`, "")
+	}
+		
+	if params.Applicant.Recipient_name == ""{
+		return nil, errors.New("405", `applicant email recipient name is missing.`, "")
 	}
 
 	return &params, nil
@@ -168,6 +188,73 @@ func httpRequest(url string, method string, params []byte, headers map[string]st
 	}
 	
 	return data_object, nil
+}
+
+func sendToQueue( info emailInfo, order_id float64, order_number string, order_url string, agency_name string, detail_message string ) ( *sqs.SendMessageOutput, error ) {
+	// Configuring SQS
+	svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
+
+	// URL to our queue
+	qURL := os.Getenv("URL_QUEUE_AUTOMATOR_MAILER")
+
+	// Building html body
+	footer_message := ""
+	if order_id == 0 {
+		footer_message = "<p> Nota: La orden de venta no se generó correctamente, debido a que no hay existencias suficientes para uno o varios de los productos.<p>"
+	} else {
+		footer_message = fmt.Sprintf(`	<center>
+											<a href='%s%s%.f' class='button'>Ir a Orden %s</button>
+										</center>`, os.Getenv("URL_ZAURU"), order_url, order_id, order_number)
+	}
+	body_html := fmt.Sprintf(`
+					<style type='text/css'>
+					.tg  {border-collapse:collapse;border-spacing:0;border-color:#999;margin:0px auto;}
+					.tg td.odd{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#c4d9f3;}
+					.tg td{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#ecf5ff;}
+					.tg th{font-family:Arial, sans-serif;font-size:14px;font-weight:normal;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#fff;background-color:#26ADE4;}
+					.tg .tg-0pky{border-color:inherit;text-align:left;vertical-align:top}
+					.button {border: 1px solid #74a0b9;background: #65a9d7;padding: 10.5px 21px;-webkit-border-radius: 6px;-moz-border-radius: 6px;border-radius: 6px;-webkit-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;-moz-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;text-shadow: #7ea4bd 0 1px 0;color: #ffffff;font-size: 14px;font-family: helvetica, serif;text-decoration: none;vertical-align: middle;}
+					</style>
+					<p>Se ha generado una nueva orden desde tienda con el siguiente detalle:<p>
+					<table class='tg'>
+						<tr>
+							<th class='tg-us36'>Cantidad</th>
+							<th class='tg-us36'>Código</th>
+							<th class='tg-us36'>Nombre</th>
+						</tr>
+						%s
+					</table>
+					<br><br><br><br><br>%s`,
+					detail_message,
+					footer_message,
+				)
+
+	// Building json body
+	message_body := fmt.Sprintf(
+		`{"id":"NOTIFICATION%.f%d","template_name":"automator","entity_id":%d,"title":"%s %s %s","body":"%s","recipient_email":"%s","entity_logo":"%s","entity_name":"%s","recipient_name":"%s","sender_name":"%s","sender_email":"%s","extra_cc":"%s","extra_bcc":"%s"}`,
+		order_id,
+		int32(time.Now().Unix()),
+		info.Entity_id,
+		info.Title,
+		agency_name,
+		order_number,
+		strings.Replace(strings.Replace(body_html,"\n", "", -1), "\t", "", -1),
+		info.Recipient,
+		info.Entity_logo,
+		info.Entity_name,
+		info.Recipient_name,
+		agency_name,
+		info.Sender,
+		info.Extra_cc,
+		info.Extra_bcc,
+	)
+
+	// Sending SQS message
+	return svc.SendMessage(&sqs.SendMessageInput{
+        DelaySeconds: aws.Int64(10),
+        MessageBody: aws.String(message_body),
+        QueueUrl:    &qURL,
+	})
 }
 
 func Handler(request events.APIGatewayProxyRequest) (response, error) {
@@ -225,16 +312,16 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		quantity, _ := strconv.ParseFloat(po.(map[string]interface{})["booked_quantity"].(string), 32)
 		row_table += fmt.Sprintf(
 						`<tr>
-							<td class='tg-yw4l %s'>%s</th>
-							<td class='tg-yw4l %s'>%s</th>
 							<td class='tg-yw4l %s'>%.f</th>
+							<td class='tg-yw4l %s'>%s</th>
+							<td class='tg-yw4l %s'>%s</th>
 						</tr>`,
 						is_odd,
-						po.(map[string]interface{})["item"].(map[string]interface{})["name"].(string),
+						quantity,
 						is_odd,
 						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
 						is_odd,
-						quantity,
+						po.(map[string]interface{})["item"].(map[string]interface{})["name"].(string),
 		)
 	}
 
@@ -247,7 +334,6 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	var sale_order map[string] interface{}
 	var sale_order_id float64
 	var sale_order_number string
-	var footer_email string
 
 	// SO request setup
 	headers_so := make(map[string] string)
@@ -261,85 +347,33 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	if err != nil {
 		sale_order_id = 0
 		sale_order_number = ""
-		footer_email = "<p> Nota: La orden de venta no se generó correctamente, debido a que no hay existencias suficientes para uno o varios de los productos.<p>"
 	} else {
 		sale_order = new_so_object.(map[string] interface{})
 		sale_order_id = sale_order["id"].(float64)
 		sale_order_number = sale_order["order_number"].(string)
-		footer_email = fmt.Sprintf(`
-									<center>
-										<a href='https://app.zauru.com/sales/orders/%.f' class='button'>Ir a Orden %s</button>
-									</center>`, sale_order_id, sale_order_number)
+	}
+
+	// Sending to applicant
+	result, err := sendToQueue( params.Applicant, purchase_order["id"].(float64), purchase_order["id_number"].(string), "/purchases/purchase_orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table)
+
+	warning := ""
+
+	if err == nil {
+		log.Print(fmt.Sprintf(`{"target": "applicant" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
+	} else {
+		warning += errors.New("507", "Internal Error", err.Error()).Error()
+	}
+
+	// Sending to dispatcher
+	result, err = sendToQueue( params.Dispatcher, sale_order_id, sale_order_number, "/sales/orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table)
+
+	if err == nil {
+		log.Print(fmt.Sprintf(`{"target": "dispatcher" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
+	} else {
+		warning += errors.New("508", "Internal Error", err.Error()).Error()
 	}
 	
-	// Configuring SQS
-	svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
-
-	// URL to our queue
-	qURL := os.Getenv("URL_QUEUE_AUTOMATOR_MAILER")
-	
-	// Building html body
-	body_html := fmt.Sprintf(`
-					<style type='text/css'>
-					.tg  {border-collapse:collapse;border-spacing:0;border-color:#999;margin:0px auto;}
-					.tg td.odd{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#c4d9f3;}
-					.tg td{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#444;background-color:#ecf5ff;}
-					.tg th{font-family:Arial, sans-serif;font-size:14px;font-weight:normal;padding:10px 5px;border-style:solid;border-width:0px;overflow:hidden;word-break:normal;border-color:#999;color:#fff;background-color:#26ADE4;}
-					.tg .tg-0pky{border-color:inherit;text-align:left;vertical-align:top}
-					.button {border: 1px solid #74a0b9;background: #65a9d7;padding: 10.5px 21px;-webkit-border-radius: 6px;-moz-border-radius: 6px;border-radius: 6px;-webkit-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;-moz-box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;box-shadow: rgba(255,255,255,0.4) 0 1px 0, inset rgba(255,255,255,0.4) 0 1px 0;text-shadow: #7ea4bd 0 1px 0;color: #ffffff;font-size: 14px;font-family: helvetica, serif;text-decoration: none;vertical-align: middle;}
-					</style>
-					<p>Se ha generado una nueva orden de venta con el siguiente detalle:<p>
-					<table class='tg'>
-					<tr>
-						<th class='tg-us36'>Código</th>
-						<th class='tg-us36'>Nombre</th>
-						<th class='tg-us36'>Cantidad</th>
-					</tr>
-						%s
-					</table>
-					<br>
-					<br>
-					<br>
-					<br>
-					<br>
-					%s`,
-					row_table,
-					footer_email,
-				)
-
-	// Building json body
-	message_body := fmt.Sprintf(
-		`{"id":"NOTIFICATION%.f%d","template_name":"automator","entity_id":%d,"title":"%s %s","body":"%s","recipient_email":"%s","entity_logo":"%s","entity_name":"%s","recipient_name":"%s","sender_name":"%s","sender_email":"%s","extra_cc":"%s","extra_bcc":"%s"}`,
-		sale_order_id,
-		int32(time.Now().Unix()),
-		params.Entity_id,
-		params.Email_title,
-		sale_order_number,
-		strings.Replace(strings.Replace(body_html,"\n", "", -1), "\t", "", -1),
-		params.Recipient_email,
-		params.Email_entity_logo,
-		params.Email_entity_name,
-		params.Email_recipient_name,
-		purchase_order["agency"].(map[string] interface{})["name"].(string),
-		params.Sender_email,
-		params.Email_extra_cc,
-		params.Email_extra_bcc,
-	)
-
-	// Sending SQS message
-	result, err := svc.SendMessage(&sqs.SendMessageInput{
-        DelaySeconds: aws.Int64(10),
-        MessageBody: aws.String(message_body),
-        QueueUrl:    &qURL,
-	})
-
-    if err != nil {
-        return response {Body: errors.New("507", "Internal Error", err.Error()).Error(), StatusCode: 500}, nil
-	}
-	
-	log.Print(fmt.Sprintf(`{"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
-	
-	return response {Body: `{"code":"200","message":"successfully processed."}`, StatusCode: 201}, nil
+	return response {Body: `{"code":"200","message":"successfully processed.","warning":%s}`, StatusCode: 201}, nil
 }
 
 func main() {
