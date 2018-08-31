@@ -59,11 +59,10 @@ type RequestParams struct {
 	Seller_id int
 	Payee_id int
 	Agency_id int
+	Environment string
 	Dispatcher emailInfo
-	Applicant emailInfo
+	Requester emailInfo
 }
-
-
 
 type poData struct {
 	Reference string `json:"reference"`
@@ -84,22 +83,24 @@ type poStruct struct {
 
 type response events.APIGatewayProxyResponse
 
+var zauru_url_env string
+
 // This function make validations and return body params
 func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error) {
-	if request.Headers["X-User-Email-1"] == "" {
-		return nil, errors.New("405", `user email (1) is missing.`, "")
+	if request.Headers["X-User-Email-Requester"] == "" {
+		return nil, errors.New("405", "user email (requester) is missing.", "")
 	}
 
-	if request.Headers["X-User-Token-1"] == "" {
-		return nil, errors.New("405", `user token (1) is missing.`, "")
+	if request.Headers["X-User-Token-Requester"] == "" {
+		return nil, errors.New("405", "user token (requester) is missing.", "")
 	}
 
-	if request.Headers["X-User-Email-2"] == "" {
-		return nil, errors.New("405", `user email (2) is missing.`, "")
+	if request.Headers["X-User-Email-Dispatcher"] == "" {
+		return nil, errors.New("405", "user email (dispatcher) is missing.", "")
 	}
 
-	if request.Headers["X-User-Token-2"] == "" {
-		return nil, errors.New("405", `user token (2) is missing.`, "")
+	if request.Headers["X-User-Token-Dispatcher"] == "" {
+		return nil, errors.New("405", "user token (dispatcher) is missing.", "")
 	}
 
 	var params RequestParams
@@ -107,49 +108,56 @@ func getParams(request * events.APIGatewayProxyRequest) (*RequestParams, error) 
 	if err := json.Unmarshal([]byte(request.Body), &params); err != nil {
 		return nil, errors.New("406", "parsing params error.", err.Error())
 	}
+
+	if params.Environment == "" {
+		return nil, errors.New("405", "environment is missing.", "")
+	}
+
+	if params.Environment == "production" {
+		zauru_url_env = "URL_ZAURU_PRODUCTION"
+	} else {
+		zauru_url_env = "URL_ZAURU_STAGING"
+	}
+	log.Print(zauru_url_env)
 	
-	if params.Purchase_order_id == 0{
-		return nil, errors.New("405", `purchase order id is missing.`, "")
+	if params.Purchase_order_id == 0 {
+		return nil, errors.New("405", "purchase order id is missing.", "")
 	}
 
-	if params.Payment_term_id == 0{
-		return nil, errors.New("405", `payment term id is missing.`, "")
+	if params.Payment_term_id == 0 {
+		return nil, errors.New("405", "payment term id is missing.", "")
 	}
 
-	if params.Seller_id == 0{
-		return nil, errors.New("405", `seller id is missing.`, "")
+	if params.Seller_id == 0 {
+		return nil, errors.New("405", "seller id is missing.", "")
 	}
 
-	if params.Payee_id == 0{
-		return nil, errors.New("405", `payee id is missing.`, "")
+	if params.Payee_id == 0 {
+		return nil, errors.New("405", "payee id is missing.", "")
 	}
 
-	if params.Agency_id == 0{
-		return nil, errors.New("405", `agency id is missing.`, "")
+	if params.Agency_id == 0 {
+		return nil, errors.New("405", "agency id is missing.", "")
 	}
 
-	if params.Dispatcher.Recipient == ""{
-		return nil, errors.New("405", `dispatcher recipient email is missing.`, "")
+	if params.Dispatcher.Recipient == "" {
+		return nil, errors.New("405", "dispatcher recipient email is missing.", "")
 	}
 
-	if params.Dispatcher.Title == ""{
-		return nil, errors.New("405", `dispatcher email title is missing.`, "")
+	if params.Dispatcher.Title == "" {
+		return nil, errors.New("405", "dispatcher email title is missing.", "")
 	}
 		
-	if params.Dispatcher.Recipient_name == ""{
-		return nil, errors.New("405", `dispatcher email recipient name is missing.`, "")
+	if params.Dispatcher.Recipient_name == "" {
+		return nil, errors.New("405", "dispatcher email recipient name is missing.", "")
 	}
 	
-	if params.Applicant.Recipient == ""{
-		return nil, errors.New("405", `applicant recipient email is missing.`, "")
+	if params.Requester.Recipient == "" {
+		return nil, errors.New("405", "requester recipient email is missing.", "")
 	}
 
-	if params.Applicant.Title == ""{
-		return nil, errors.New("405", `applicant email title is missing.`, "")
-	}
-		
-	if params.Applicant.Recipient_name == ""{
-		return nil, errors.New("405", `applicant email recipient name is missing.`, "")
+	if params.Requester.Title == "" {
+		return nil, errors.New("405", "requester email title is missing.", "")
 	}
 
 	return &params, nil
@@ -181,6 +189,7 @@ func httpRequest(url string, method string, params []byte, headers map[string]st
 	}
 	// Parsing json response to object
 	var data_object interface{}
+	log.Print(string(body))
 	err = json.Unmarshal(body, &data_object);
 	if err != nil {
 		log.Print(string(body))
@@ -198,13 +207,13 @@ func sendToQueue( info emailInfo, order_id float64, order_number string, order_u
 	qURL := os.Getenv("URL_QUEUE_AUTOMATOR_MAILER")
 
 	// Building html body
-	footer_message := ""
+	var footer_message string
 	if order_id == 0 {
 		footer_message = "<p> Nota: La orden de venta no se generó correctamente, debido a que no hay existencias suficientes para uno o varios de los productos.<p>"
 	} else {
 		footer_message = fmt.Sprintf(`	<center>
 											<a href='%s%s%.f' class='button'>Ir a Orden %s</button>
-										</center>`, os.Getenv("URL_ZAURU"), order_url, order_id, order_number)
+										</center>`, os.Getenv(zauru_url_env), order_url, order_id, order_number)
 	}
 	body_html := fmt.Sprintf(`
 					<style type='text/css'>
@@ -268,9 +277,9 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	// PO request setup
 	headers_po := make(map[string] string)
-	url_po := fmt.Sprintf("https://app.zauru.com/purchases/purchase_orders/%d.json", params.Purchase_order_id)
-	headers_po["X-User-Email"] = request.Headers["X-User-Email-1"]
-	headers_po["X-User-Token"] = request.Headers["X-User-Token-1"]
+	url_po := fmt.Sprintf("%s/purchases/purchase_orders/%d.json", os.Getenv(zauru_url_env), params.Purchase_order_id)
+	headers_po["X-User-Email"] = request.Headers["X-User-Email-Requester"]
+	headers_po["X-User-Token"] = request.Headers["X-User-Token-Requester"]
 
 	// Send request, getting response object
 	po_object, err := httpRequest(url_po, "GET", []byte(""), headers_po)
@@ -280,6 +289,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	purchase_order := po_object.(map[string] interface{})
 
+	params.Requester.Recipient_name = purchase_order["agency"].(map[string] interface{})["name"].(string)
 
 	// Filling sale order data
 	so_data := &poData{
@@ -299,13 +309,13 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		Invoice: *so_data,
 	}
 
-	row_table := ""
+	var row_table string
 	for i, po:= range purchase_order["purchase_order_details"].([] interface{}) {
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)] = make(map[string]interface{})
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)]["quantity"], _ = strconv.ParseFloat(po.(map[string]interface{})["booked_quantity"].(string), 32)
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)]["item_code"] = po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string)
 		so_object.Invoice.Invoice_details_attributes[fmt.Sprintf("%d",i)]["unit_price"] = 1.00
-		is_odd := ""
+		var is_odd string
 		if i % 2 != 0{
 			is_odd = "odd"
 		}
@@ -337,9 +347,9 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 
 	// SO request setup
 	headers_so := make(map[string] string)
-	url_so := "https://app.zauru.com/sales/orders.json"
-	headers_so["X-User-Email"] = request.Headers["X-User-Email-2"]
-	headers_so["X-User-Token"] = request.Headers["X-User-Token-2"]
+	url_so := os.Getenv(zauru_url_env) + "/sales/orders.json"
+	headers_so["X-User-Email"] = request.Headers["X-User-Email-Dispatcher"]
+	headers_so["X-User-Token"] = request.Headers["X-User-Token-Dispatcher"]
 	headers_so["Accept"] = "application/json"
 	headers_so["Content-type"] = "application/json"
 	new_so_object, err := httpRequest(url_so, "POST", so_json, headers_so)
@@ -349,19 +359,24 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 		sale_order_number = ""
 	} else {
 		sale_order = new_so_object.(map[string] interface{})
-		sale_order_id = sale_order["id"].(float64)
-		sale_order_number = sale_order["order_number"].(string)
+		if sale_order["id"] == nil {
+			sale_order_id = 0
+			sale_order_number = ""
+		} else {
+			sale_order_id = sale_order["id"].(float64)
+			sale_order_number = sale_order["order_number"].(string)
+		}
 	}
 
-	// Sending to applicant
-	result, err := sendToQueue( params.Applicant, purchase_order["id"].(float64), purchase_order["id_number"].(string), "/purchases/purchase_orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table)
+	var warning string
 
-	warning := ""
+	// Sending to requester
+	result, err := sendToQueue( params.Requester, purchase_order["id"].(float64), purchase_order["id_number"].(string), "/purchases/purchase_orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table)
 
 	if err == nil {
-		log.Print(fmt.Sprintf(`{"target": "applicant" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
+		log.Print(fmt.Sprintf(`{"target": "requester" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
 	} else {
-		warning += errors.New("507", "Internal Error", err.Error()).Error()
+		warning += errors.New("507", "Can't send email to requester", err.Error()).Error()
 	}
 
 	// Sending to dispatcher
@@ -370,10 +385,10 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	if err == nil {
 		log.Print(fmt.Sprintf(`{"target": "dispatcher" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
 	} else {
-		warning += errors.New("508", "Internal Error", err.Error()).Error()
+		warning += errors.New("508", "Can't send email to dispatcher", err.Error()).Error()
 	}
 	
-	return response {Body: `{"code":"200","message":"successfully processed.","warning":%s}`, StatusCode: 201}, nil
+	return response {Body: fmt.Sprintf(`{"code":"200","message":"successfully processed.","warning":"%s"}`, warning), StatusCode: 201}, nil
 }
 
 func main() {
