@@ -227,7 +227,7 @@ func sendToQueue( info emailInfo, order_id float64, order_number string, order_u
 					<p>Se ha generado una nueva orden desde tienda con el siguiente detalle:<p>
 					<table class='tg'>
 						<tr>
-							<th class='tg-us36'>Cantidad</th>
+							<th class='tg-us36'>Cant</th>
 							<th class='tg-us36'>Código</th>
 							<th class='tg-us36'>Nombre</th>
 						</tr>
@@ -294,7 +294,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	// Filling sale order data
 	so_data := &poData{
 		Reference: purchase_order["agency"].(map[string] interface{})["name"].(string),
-		Memo: purchase_order["memo"].(string),
+		Memo: fmt.Sprintf("%s %s", purchase_order["id_number"].(string), purchase_order["memo"].(string)),
 		Date: purchase_order["issue_date"].(string),
 		Taxable: true,
 		Pos: false,
@@ -329,9 +329,9 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 						is_odd,
 						quantity,
 						is_odd,
-						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
-						is_odd,
 						po.(map[string]interface{})["item"].(map[string]interface{})["name"].(string),
+						is_odd,
+						po.(map[string]interface{})["item"].(map[string]interface{})["code"].(string),
 		)
 	}
 
