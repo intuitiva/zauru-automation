@@ -199,7 +199,7 @@ func httpRequest(url string, method string, params []byte, headers map[string]st
 	return data_object, nil
 }
 
-func sendToQueue( info emailInfo, order_id float64, order_number string, order_url string, agency_name string, detail_message string ) ( *sqs.SendMessageOutput, error ) {
+func sendToQueue( info emailInfo, order_id float64, order_number string, order_url string, agency_name string, detail_message string, id_reference string ) ( *sqs.SendMessageOutput, error ) {
 	// Configuring SQS
 	svc := sqs.New(session.New(), &aws.Config{Region: aws.String("us-west-2")})
 
@@ -214,6 +214,10 @@ func sendToQueue( info emailInfo, order_id float64, order_number string, order_u
 		footer_message = fmt.Sprintf(`	<center>
 											<a href='%s%s%.f' class='button'>Ir a Orden %s</button>
 										</center>`, os.Getenv(zauru_url_env), order_url, order_id, order_number)
+	}
+	var reference_message string
+	if id_reference != "" {
+		reference_message = fmt.Sprintf(`<p>Orden generada a partir de la orden de compra <b>%s</b></p>`, id_reference)
 	}
 	body_html := fmt.Sprintf(`
 					<style type='text/css'>
@@ -233,8 +237,11 @@ func sendToQueue( info emailInfo, order_id float64, order_number string, order_u
 						</tr>
 						%s
 					</table>
+					<br><br>
+					%s
 					<br><br><br><br><br>%s`,
 					detail_message,
+					reference_message,
 					footer_message,
 				)
 
@@ -371,7 +378,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	var warning string
 
 	// Sending to requester
-	result, err := sendToQueue( params.Requester, purchase_order["id"].(float64), purchase_order["id_number"].(string), "/purchases/purchase_orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table)
+	result, err := sendToQueue( params.Requester, purchase_order["id"].(float64), purchase_order["id_number"].(string), "/purchases/purchase_orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table, "")
 
 	if err == nil {
 		log.Print(fmt.Sprintf(`{"target": "requester" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
@@ -380,7 +387,7 @@ func Handler(request events.APIGatewayProxyRequest) (response, error) {
 	}
 
 	// Sending to dispatcher
-	result, err = sendToQueue( params.Dispatcher, sale_order_id, sale_order_number, "/sales/orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table)
+	result, err = sendToQueue( params.Dispatcher, sale_order_id, sale_order_number, "/sales/orders/", purchase_order["agency"].(map[string] interface{})["name"].(string), row_table, purchase_order["id_number"].(string))
 
 	if err == nil {
 		log.Print(fmt.Sprintf(`{"target": "dispatcher" ,"sqs_status":"sended","sqs_id":"%s"}`,*result.MessageId))
