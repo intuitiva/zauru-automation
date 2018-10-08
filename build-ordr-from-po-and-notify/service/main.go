@@ -219,6 +219,7 @@ func sendToQueue( info emailInfo, order_id float64, order_number string, order_u
 	if id_reference != "" {
 		reference_message = fmt.Sprintf(`<p>Orden generada a partir de la orden de compra <b>%s</b></p>`, id_reference)
 	}
+
 	body_html := fmt.Sprintf(`
 					<style type='text/css'>
 					.tg  {border-collapse:collapse;border-spacing:0;border-color:#999;margin:0px auto;}
@@ -240,7 +241,7 @@ func sendToQueue( info emailInfo, order_id float64, order_number string, order_u
 					<br><br>
 					%s
 					<br><br><br><br><br>%s`,
-					detail_message,
+					strings.Replace(detail_message, `"`, `&#34;`, -1),
 					reference_message,
 					footer_message,
 				)
